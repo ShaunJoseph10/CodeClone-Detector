@@ -167,10 +167,16 @@ class TestIndex(unittest.TestCase):
         self.assertEqual(ignored, 0)
 
     def test_common_fingerprints_ignored(self):
-        sets = [HashSet([1, 10]), HashSet([1, 11]), HashSet([1, 12]), HashSet([1, 13])]
+        sets = [HashSet([1, 100 + i]) for i in range(10)]
         pairs, ignored = candidate_pairs(sets, min_shared=1, max_df=0.5)
         self.assertEqual(pairs, [])
         self.assertEqual(ignored, 1)
+
+    def test_small_class_keeps_shared_code(self):
+        sets = [HashSet([1, 2, 3]) for _ in range(4)]   # everyone copied: must not be ignored
+        pairs, ignored = candidate_pairs(sets, min_shared=3, max_df=0.5)
+        self.assertEqual(len(pairs), 6)
+        self.assertEqual(ignored, 0)
 
 
 class TestAPI(unittest.TestCase):

@@ -32,7 +32,7 @@ class Config:
     k: int = K                      # winnowing k-gram length
     window: int = WINDOW            # winnowing window size
     min_shared: int = 3             # fingerprints a pair must share to be scored
-    max_df: float = 0.5             # ignore fingerprints present in more than this share of files
+    max_df: float = 0.8             # ignore fingerprints present in more than this share of files
     deadcode: bool = True
     canonical_loops: bool = True
     use_index: bool = True
