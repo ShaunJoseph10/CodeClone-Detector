@@ -12,11 +12,15 @@ MIN_MASS = 6
 class SourceFile:
     """A parsed, normalized and hashed submission."""
 
-    def __init__(self, file_id, name, source):
+    def __init__(self, file_id, name, source, passes=()):
+        """passes: extra tree rewrites run before normalize(), e.g. (remove_dead_code, canonicalize)."""
         self.id = file_id
         self.name = name
         self.source = source
-        self.root = hash_tree(normalize(parse(source)))  # CO3 tree -> normalized -> hashed
+        root = parse(source)
+        for rewrite in passes:
+            root = rewrite(root)
+        self.root = hash_tree(normalize(root))  # CO3 tree -> normalized -> hashed
         self.total_nodes = self.root.size
 
 
@@ -60,8 +64,9 @@ def structurally_equal(a, b):
     return True
 
 
-def find_clones(files, min_mass=MIN_MASS):
-    """files: list of SourceFile. Returns the list of maximal Clone pairs between files."""
+def find_clones(files, min_mass=MIN_MASS, allowed=None):
+    """files: list of SourceFile. Returns the list of maximal Clone pairs between files.
+    allowed: optional HashSet of (id_a, id_b) file pairs; other pairs are not verified."""
     # 1. Insert every subtree of at least min_mass nodes into our own hash table (CO4).
     table = HashTable()
     for f in files:
@@ -69,20 +74,30 @@ def find_clones(files, min_mass=MIN_MASS):
             if node.size >= min_mass:
                 table.insert(node.hash, f, node)
 
-    # 2. Inside each bucket, entries with equal fingerprints from different files are candidates.
+    # 2. Inside each bucket, group entries into classes of truly identical subtrees.
+    #    3. Verify: equal hash is not proof, so each entry is compared with ONE representative
+    #    per class (O(b) checks per bucket instead of O(b^2)); equality is transitive.
     candidates = []
     matched = set()  # (id(node_a), id(node_b)) of every verified match, for the maximal check
     for chain in table.chains():
-        # ponytail: O(b^2) pair scan per bucket; fine while one solution has few repeats.
-        for i in range(len(chain)):
-            for j in range(i + 1, len(chain)):
-                x, y = chain[i], chain[j]
-                if x.fingerprint != y.fingerprint or x.file_id is y.file_id:
-                    continue
-                if x.file_id.id > y.file_id.id:
-                    x, y = y, x
-                # 3. Verify: equal hash is not proof, compare the trees themselves.
-                if structurally_equal(x.node, y.node):
+        classes = []  # [representative entry, members...]
+        for e in chain:
+            for cls in classes:
+                if cls[0].fingerprint == e.fingerprint and structurally_equal(cls[0].node, e.node):
+                    cls.append(e)
+                    break
+            else:
+                classes.append([e])
+        for cls in classes:
+            for i in range(len(cls)):
+                for j in range(i + 1, len(cls)):
+                    x, y = cls[i], cls[j]
+                    if x.file_id is y.file_id:
+                        continue
+                    if x.file_id.id > y.file_id.id:
+                        x, y = y, x
+                    if allowed is not None and (x.file_id.id, y.file_id.id) not in allowed:
+                        continue
                     candidates.append(Clone(x.file_id, x.node, y.file_id, y.node))
                     matched.add((id(x.node), id(y.node)))
 
